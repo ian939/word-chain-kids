@@ -117,6 +117,7 @@
     <div class="pill"><span class="lbl">이은 단어</span><span id="count">0</span></div>
     <div class="pill"><span class="lbl">점수</span><span id="score">0</span></div>
     <div id="spacer"></div>
+    <button class="ghostbtn" id="btnVoice" title="목소리 고르기">🔈</button>
     <div class="pill"><span class="lbl">이어가기</span><span id="lives">⭐⭐⭐⭐</span></div>
   </div>
 
@@ -145,9 +146,10 @@
 <div id="startScreen" class="center-screen">
   <div class="big-emoji">🦊</div>
   <div class="title">끝말잇기</div>
-  <div class="small">마이크를 누르고 단어를 말하면, 비슷한 단어 4개가 나와요.<br>그중에 골라서 끝말을 계속 이어 봐요! 몇 개까지 이을 수 있을까?</div>
+  <div class="small">마이크를 누르고 단어를 말하면, <b>말한 것과 비슷한 단어</b>가 나와요.<br>생각한 단어가 없으면 <b>🎤 다시 말하기</b>로 또박또박 다시! 몇 개까지 이을 수 있을까?</div>
   <div id="bestStart" class="small"></div>
   <button class="bigbtn" id="btnStart">시작하기 ▶</button>
+  <button class="ghostbtn" id="btnVoice2" style="background:rgba(255,255,255,.7)">🔈 목소리 고르기</button>
   <div id="loadMsg" class="small">단어를 불러오는 중… ⏳</div>
 </div>
 
@@ -309,11 +311,20 @@ function clearHint(){ elHintbox.classList.add('hidden'); elHintbox.innerHTML='';
 
 /* ===================== TTS ===================== */
 let koVoice = null;
+function listKoVoices(){
+  if(!('speechSynthesis' in window)) return [];
+  const vs = speechSynthesis.getVoices();
+  return vs.filter(v=>(v.lang||'').toLowerCase().replace('_','-').startsWith('ko'));
+}
 function loadVoices(){
   if(!('speechSynthesis' in window)) return;
-  const vs = speechSynthesis.getVoices();
-  // 한국어 음성 우선 선택 (없으면 영어로 읽혀 "닷닷"처럼 들림)
-  koVoice = vs.find(v=>v.lang && v.lang.toLowerCase().replace('_','-').startsWith('ko')) || null;
+  const ko = listKoVoices();
+  // 저장된 선택 우선
+  const saved = localStorage.getItem('kkutu_voice');
+  if(saved){ const f = ko.find(v=>v.name===saved); if(f){ koVoice=f; return; } }
+  // 여성/밝은 음성 우선(없으면 첫 한국어 음성)
+  const pref = ['yuna','유나','sora','소라','nara','heami','female','여성','수진','지민','지영'];
+  koVoice = ko.find(v=>pref.some(p=>(v.name||'').toLowerCase().includes(p))) || ko[0] || null;
 }
 if('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 
@@ -333,12 +344,50 @@ function speak(text){
     const u = new SpeechSynthesisUtterance(clean);
     u.lang='ko-KR';
     if(koVoice) u.voice = koVoice;
-    u.rate=0.95; u.pitch=1.05;
+    u.rate=1.0; u.pitch=1.25;   // 밝고 가벼운 톤
     speechSynthesis.speak(u);
   }catch(e){}
 }
 // 뜻만 읽어주기
 function speakDef(w){ const e=ENTRY.get(w); speak(e&&e.def ? e.def : '뜻 정보가 없어요'); }
+// 특정 음성 미리듣기
+function previewVoice(v){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance('안녕! 나랑 끝말잇기 하자.');
+    u.voice=v; u.lang='ko-KR'; u.rate=1.0; u.pitch=1.25;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+// 목소리 고르기 모달
+function openVoicePicker(){
+  const ko = listKoVoices();
+  const mask=document.createElement('div'); mask.className='mask';
+  const m=document.createElement('div'); m.className='modal';
+  m.innerHTML=`<h2>🔈 목소리 고르기</h2><div class="sub">마음에 드는 한국어 목소리를 골라요. (들어보기 → 이걸로!)</div>`;
+  if(ko.length===0){
+    m.innerHTML += `<div class="defpop">이 기기에 한국어 음성이 없어요.<br>아이패드: <b>설정 → 손쉬운 사용 → 음성 콘텐츠 → 음성 → 한국어</b>에서 음성을 받은 뒤 다시 열어주세요.</div>`;
+  } else {
+    const saved = localStorage.getItem('kkutu_voice');
+    const list=document.createElement('div'); list.id='pickerList';
+    ko.forEach(v=>{
+      const cur = (saved && v.name===saved) || (!saved && koVoice && v.name===koVoice.name);
+      const row=document.createElement('div'); row.className='pli'; row.style.cursor='default';
+      row.innerHTML=`<span>${cur?'✅ ':''}${v.name}</span>
+        <span style="display:flex;gap:8px"><button class="spk" style="border:none;background:var(--soft);border-radius:10px;padding:6px 10px">▶ 들어보기</button>
+        <button class="lv" style="border:none">이걸로!</button></span>`;
+      const btns=row.querySelectorAll('button');
+      btns[0].onclick=()=>previewVoice(v);
+      btns[1].onclick=()=>{ localStorage.setItem('kkutu_voice', v.name); loadVoices(); document.body.removeChild(mask); toast('목소리를 바꿨어요 🔈'); speak('이 목소리로 할게!'); };
+      list.appendChild(row);
+    });
+    m.appendChild(list);
+  }
+  const close=document.createElement('button'); close.className='closebtn'; close.textContent='닫기';
+  close.onclick=()=>document.body.removeChild(mask);
+  m.appendChild(close); mask.appendChild(m); document.body.appendChild(mask);
+}
 
 /* ===================== Turn flow ===================== */
 function startGame(){
@@ -379,29 +428,46 @@ function acceptWord(word, gained){
   if(validWords().length===0){ endGame('와! 더 이상 이을 단어가 없어요'); }
 }
 
-/* ----- 후보 표시 ----- */
+/* ----- "다시 말하기" 버튼 (재시도) ----- */
+function retryButton(label){
+  const r=document.createElement('button'); r.className='cand';
+  r.style.gridColumn='1/-1'; r.style.background='var(--accent2)'; r.style.color='#7a5b00';
+  r.style.fontSize='20px'; r.textContent = label || '🎤 다시 말하기';
+  r.onclick=()=> startListening();
+  return r;
+}
+
+/* ----- 후보 표시: 말한 것과 "비슷한 단어"만 보여줌 ----- */
 function showCandidates(heardRaw){
   const valid = validWords();
   if(valid.length===0){ endGame('더 이상 이을 단어가 없어요'); return; }
-  let ranked;
   const hw = onlyHangul(heardRaw);
-  if(hw){
-    const hj = toJamo(hw);
-    ranked = valid.map(w=>({w, d:editDist(hj, toJamo(w)) + ENTRY.get(w).lv*0.01}));
-    ranked.sort((a,b)=>a.d-b.d);
-    ranked = ranked.slice(0,4).map(x=>x.w);
-    if(G.curStarts.includes(hw[0]))
-      elHeard.innerHTML = `🗣️ 들은 말: <b>"${heardRaw}"</b>`;
-    else
-      elHeard.innerHTML = `🗣️ "${heardRaw}" — <b>${G.curStarts.join('/')}</b>(으)로 시작하는 단어를 골라요!`;
-  } else {
-    elHeard.innerHTML = '🤔 잘 못 들었어요. 아래에서 골라볼까?';
-    ranked = pickByLevel(valid, 4);
-  }
   elCands.innerHTML='';
-  ranked.forEach(w=>{
-    const b=document.createElement('button'); b.className='cand';
-    b.style.justifyContent='center';
+
+  if(!hw){
+    elHeard.innerHTML = '🤔 잘 못 들었어요. 다시 또박또박 말해볼까?';
+    elCands.appendChild(retryButton('🎤 다시 말하기'));
+    elCands.classList.remove('hidden');
+    return;
+  }
+
+  // 들은 말과 발음이 비슷한 유효 단어만 추림 (임계값 이내)
+  const hj = toJamo(hw);
+  const THRESH = Math.max(2, Math.ceil(hj.length * 0.55));
+  const scored = valid.map(w=>({w, d:editDist(hj, toJamo(w))})).sort((a,b)=>a.d-b.d);
+  const near = scored.filter(x=>x.d <= THRESH).slice(0,4).map(x=>x.w);
+
+  if(near.length===0){
+    // 비슷한 단어가 없음 → 정답을 거저 주지 않고 다시 말하게
+    elHeard.innerHTML = `🗣️ "${heardRaw}" — 비슷한 단어를 못 찾았어요. <b>${G.curStarts[0]}</b>(으)로 시작하는 단어를 다시 말해봐!`;
+    elCands.appendChild(retryButton('🎤 다시 말하기'));
+    elCands.classList.remove('hidden');
+    return;
+  }
+
+  elHeard.innerHTML = `🗣️ 들은 말: <b>"${heardRaw}"</b> — 생각한 단어가 있나요?`;
+  near.forEach(w=>{
+    const b=document.createElement('button'); b.className='cand'; b.style.justifyContent='center';
     const span=document.createElement('span'); span.textContent=w;
     b.appendChild(span);
     b.onclick=()=>{
@@ -411,6 +477,7 @@ function showCandidates(heardRaw){
     };
     elCands.appendChild(b);
   });
+  elCands.appendChild(retryButton('🎤 없어요, 다시 말하기'));
   elCands.classList.remove('hidden');
 }
 
@@ -418,22 +485,21 @@ function showCandidates(heardRaw){
 let recog=null, listening=false;
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-elMic.addEventListener('click', ()=>{
+function startListening(){
   if(!DATA_READY) return;
   if(!SR){ toast('이 브라우저는 마이크가 안돼서 단어를 골라요'); openPicker(); return; }
   if(listening){ try{recog.stop();}catch(e){} return; }
   try{
     recog = new SR();
     recog.lang='ko-KR'; recog.interimResults=false; recog.maxAlternatives=5;
-    recog.onstart=()=>{ listening=true; elMic.classList.add('listening'); elMicLabel.textContent='듣고 있어요… 말해요!'; elHeard.textContent=''; };
+    recog.onstart=()=>{ listening=true; elMic.classList.add('listening'); elMicLabel.textContent='듣고 있어요… 말해요!'; elHeard.textContent=''; clearCands(); };
     recog.onerror=(e)=>{ elMicLabel.textContent = e.error==='not-allowed' ? '마이크 권한을 허용해 주세요' : '다시 한 번 말해볼까요?'; };
-    recog.onend=()=>{ listening=false; elMic.classList.remove('listening'); };
+    recog.onend=()=>{ listening=false; elMic.classList.remove('listening'); elMicLabel.textContent='마이크를 누르고 말해요'; };
     recog.onresult=(e)=>{
       let best='';
       try{
         if(e.results && e.results.length){
           const r0 = e.results[0];
-          // 인식 후보 중 한글이 가장 잘 잡힌 것 우선
           const alts=[]; for(const a of r0) alts.push(a.transcript||'');
           best = alts.slice().sort((a,b)=>onlyHangul(b).length-onlyHangul(a).length)[0] || alts[0] || '';
         }
@@ -442,7 +508,8 @@ elMic.addEventListener('click', ()=>{
     };
     recog.start();
   }catch(err){ toast('마이크를 쓸 수 없어 단어를 골라요'); openPicker(); }
-});
+}
+elMic.addEventListener('click', startListening);
 
 /* ===================== Hints ===================== */
 function ensureHintWord(){
@@ -581,6 +648,8 @@ function toast(t){
 /* ===================== boot ===================== */
 $('btnStart').addEventListener('click', startGame);
 $('btnRestart').addEventListener('click', startGame);
+$('btnVoice').addEventListener('click', openVoicePicker);
+$('btnVoice2').addEventListener('click', openVoicePicker);
 
 (async function boot(){
   const b=bestRecord();
