@@ -132,6 +132,7 @@
     <div id="micLabel">마이크를 누르고 말해요</div>
 
     <div id="cands" class="hidden"></div>
+    <div id="candDef" class="defpop hidden" style="width:100%; max-width:560px;"></div>
     <div id="hintbox" class="hidden"></div>
 
     <div id="actions">
@@ -306,7 +307,7 @@ function setPromptSyllable(){
   else elPrompt.innerHTML = `<b>${G.curStarts[0]}</b> (으)로 시작하는 단어를 말해봐!`;
   elBigSyl.style.animation='none'; void elBigSyl.offsetWidth; elBigSyl.style.animation='';
 }
-function clearCands(){ elCands.classList.add('hidden'); elCands.innerHTML=''; }
+function clearCands(){ elCands.classList.add('hidden'); elCands.innerHTML=''; const cd=$('candDef'); cd.classList.add('hidden'); cd.innerHTML=''; }
 function clearHint(){ elHintbox.classList.add('hidden'); elHintbox.innerHTML=''; }
 
 /* ===================== TTS ===================== */
@@ -465,20 +466,33 @@ function showCandidates(heardRaw){
     return;
   }
 
-  elHeard.innerHTML = `🗣️ 들은 말: <b>"${heardRaw}"</b> — 생각한 단어가 있나요?`;
+  elHeard.innerHTML = `🗣️ 들은 말: <b>"${heardRaw}"</b> — 단어를 누르면 뜻을 봐요!`;
   near.forEach(w=>{
     const b=document.createElement('button'); b.className='cand'; b.style.justifyContent='center';
     const span=document.createElement('span'); span.textContent=w;
     b.appendChild(span);
-    b.onclick=()=>{
-      const gained = G.hintsThisTurn===0?2 : G.hintsThisTurn===1?1:0;
-      successFx();
-      acceptWord(w, gained);
-    };
+    b.onclick=()=> showCandDef(w);
     elCands.appendChild(b);
   });
   elCands.appendChild(retryButton('🎤 없어요, 다시 말하기'));
   elCands.classList.remove('hidden');
+}
+
+// 후보 단어 선택 시: 뜻을 보여주고 "이 단어로 이어가기"로 확정
+function showCandDef(w){
+  const e=ENTRY.get(w);
+  const cd=$('candDef');
+  cd.classList.remove('hidden');
+  cd.innerHTML=`<div><b style="font-size:22px">${w}</b> <span class="spk" style="cursor:pointer">🔊 뜻 듣기</span></div>
+    <div style="margin-top:6px">${e&&e.def?e.def:'(뜻 정보가 없어요)'}</div>
+    <button class="closebtn" style="margin-top:10px; background:var(--good)">✅ 이 단어로 이어가기 ▶</button>`;
+  cd.querySelector('.spk').onclick=()=>speakDef(w);
+  cd.querySelector('button').onclick=()=>{
+    const gained = G.hintsThisTurn===0?2 : G.hintsThisTurn===1?1:0;
+    successFx();
+    acceptWord(w, gained);
+  };
+  cd.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 /* ===================== Speech recognition ===================== */
