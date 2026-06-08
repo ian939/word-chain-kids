@@ -94,8 +94,9 @@
   .pli .lv{font-size:12px; color:#fff; background:var(--accent); border-radius:8px; padding:2px 8px; font-weight:800;}
 
   /* ---------- start / end screens ---------- */
-  .center-screen{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-                 text-align:center; padding:24px; gap:14px; z-index:40;
+  .center-screen{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+                 text-align:center; padding:max(24px,5vh) 24px 44px; gap:14px; z-index:40;
+                 overflow-y:auto; -webkit-overflow-scrolling:touch;
                  background:linear-gradient(160deg,var(--bg1),var(--bg2));}
   .title{font-size:40px; font-weight:900; color:#fff; text-shadow:0 4px 0 rgba(0,0,0,.12);}
   .big-emoji{font-size:64px;}
@@ -488,7 +489,7 @@ function showCandDef(w){
     <button class="closebtn" style="margin-top:10px; background:var(--good)">✅ 이 단어로 이어가기 ▶</button>`;
   cd.querySelector('.spk').onclick=()=>speakDef(w);
   cd.querySelector('button').onclick=()=>{
-    const gained = G.hintsThisTurn===0?2 : G.hintsThisTurn===1?1:0;
+    const gained = G.hintsThisTurn ? 0 : 1;
     successFx();
     acceptWord(w, gained);
   };
@@ -534,18 +535,13 @@ function ensureHintWord(){
 $('btnHint').addEventListener('click', ()=>{
   ensureHintWord();
   if(!G.hintWord){ toast('힌트 줄 단어가 없어요'); return; }
-  if(G.hintsThisTurn===0){
-    G.hintsThisTurn=1;
-    elHintbox.innerHTML = `<div>이런 초성으로 시작해요 (맞히면 1점!)</div><div class="cho">${choseong(G.hintWord)}</div>`;
-    elHintbox.classList.remove('hidden');
-  } else {
-    G.hintsThisTurn=2;
-    const e=ENTRY.get(G.hintWord);
-    elHintbox.innerHTML = `<div>뜻으로 알아맞혀 봐요 (이제 0점) <span class="spk" style="cursor:pointer">🔊</span></div>
-      <div style="margin-top:6px; color:#5a5a78">${e&&e.def?e.def:'(뜻 정보가 없어요)'}</div>`;
-    elHintbox.classList.remove('hidden');
-    elHintbox.querySelector('.spk').onclick=()=>speak(e&&e.def?e.def:G.hintWord);
-  }
+  G.hintsThisTurn=1;   // 힌트 사용 → 이번 차례 0점
+  const e=ENTRY.get(G.hintWord);
+  elHintbox.innerHTML = `<div>💡 힌트 (이제 0점)</div>
+    <div class="cho">${choseong(G.hintWord)}</div>
+    <div style="margin-top:4px; color:#5a5a78">뜻: ${e&&e.def?e.def:'(뜻 정보가 없어요)'} <span class="spk" style="cursor:pointer">🔊</span></div>`;
+  elHintbox.classList.remove('hidden');
+  elHintbox.querySelector('.spk').onclick=()=>speak(e&&e.def?e.def:G.hintWord);
 });
 
 /* ===================== 골라서 입력 (보조) ===================== */
@@ -562,7 +558,7 @@ function openPicker(){
     const b=document.createElement('button'); b.className='pli';
     b.innerHTML=`<span>${w}</span><span style="display:flex;gap:8px;align-items:center"><span class="spk">🔊</span><span class="lv">Lv${ENTRY.get(w).lv}</span></span>`;
     b.querySelector('.spk').onclick=(ev)=>{ev.stopPropagation(); speakDef(w);};
-    b.onclick=()=>{ const gained=G.hintsThisTurn===0?2:G.hintsThisTurn===1?1:0; document.body.removeChild(mask); successFx(); acceptWord(w,gained); };
+    b.onclick=()=>{ const gained=G.hintsThisTurn?0:1; document.body.removeChild(mask); successFx(); acceptWord(w,gained); };
     list.appendChild(b);
   });
   m.appendChild(list);
