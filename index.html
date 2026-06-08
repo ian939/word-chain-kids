@@ -151,7 +151,10 @@
   <div class="small">마이크를 누르고 단어를 말하면, <b>말한 것과 비슷한 단어</b>가 나와요.<br>생각한 단어가 없으면 <b>🎤 다시 말하기</b>로 또박또박 다시! 몇 개까지 이을 수 있을까?</div>
   <div id="bestStart" class="small"></div>
   <button class="bigbtn" id="btnStart">시작하기 ▶</button>
-  <button class="ghostbtn" id="btnVoice2" style="background:rgba(255,255,255,.7)">🔈 목소리 고르기</button>
+  <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+    <button class="ghostbtn" id="btnRecords" style="background:rgba(255,255,255,.7)">📜 기록</button>
+    <button class="ghostbtn" id="btnVoice2" style="background:rgba(255,255,255,.7)">🔈 목소리 고르기</button>
+  </div>
   <div id="loadMsg" class="small">단어를 불러오는 중… ⏳</div>
 </div>
 
@@ -170,6 +173,7 @@
   <div id="endWords" class="wordgrid" style="max-width:560px; width:100%;"></div>
   <div id="endDef" class="defpop hidden" style="max-width:560px; width:100%;"></div>
   <button class="bigbtn" id="btnRestart">다시하기 🔄</button>
+  <button class="ghostbtn" id="btnRecords2" style="background:rgba(255,255,255,.7)">📜 기록 보기</button>
 </div>
 
 <div id="toast"></div>
@@ -601,16 +605,29 @@ $('btnGiveup').addEventListener('click', ()=>{
 /* ===================== 그만하기 / 종료 ===================== */
 $('btnStop').addEventListener('click', ()=>{ if(confirm('그만하고 결과를 볼까요?')) endGame('여기까지! 잘했어요'); });
 
-function bestRecord(){ const v=localStorage.getItem('kkutu_best'); return v?JSON.parse(v):{count:0,score:0}; }
-function saveBest(count,score){
-  const b=bestRecord();
-  if(count>b.count || (count===b.count && score>b.score)){ localStorage.setItem('kkutu_best', JSON.stringify({count,score})); return true; }
-  return false;
+/* ===================== 기록 (history) ===================== */
+function getHistory(){ try{ return JSON.parse(localStorage.getItem('kkutu_history')||'[]'); }catch(e){ return []; } }
+function setHistory(h){ try{ localStorage.setItem('kkutu_history', JSON.stringify(h)); }catch(e){} }
+function getBest(){
+  const h=getHistory();
+  if(!h.length) return {count:0,score:0};
+  return h.slice().sort((a,b)=> (b.count-a.count) || (b.score-a.score))[0];
 }
+function addHistory(count,score){
+  const h=getHistory();
+  h.push({count, score, ts: Date.now()});
+  if(h.length>300) h.splice(0, h.length-300);   // 최근 300판 유지
+  setHistory(h);
+}
+function bestRecord(){ return getBest(); }   // 호환용
+
 function endGame(msg){
   try{ if(recog) recog.stop(); }catch(e){}
   const count=G.chain.length-1, score=G.score;
-  const isBest=saveBest(count,score); const b=bestRecord();
+  const prev=getBest();
+  const isBest = count>prev.count || (count===prev.count && score>prev.score);
+  addHistory(count, score);
+  const b=getBest();
   $('endTitle').textContent = msg || '끝!';
   $('endEmoji').textContent = isBest ? '🏆' : '🎉';
   $('endCount').textContent = count;
@@ -632,6 +649,48 @@ function endGame(msg){
     grid.appendChild(b2);
   });
   $('endScreen').classList.remove('hidden');
+}
+
+/* ===================== 기록 보기 모달 ===================== */
+function fmtDate(ts){
+  try{
+    const d=new Date(ts);
+    const mm=d.getMonth()+1, dd=d.getDate();
+    let h=d.getHours(); const mi=String(d.getMinutes()).padStart(2,'0');
+    const ap = h<12 ? '오전':'오후'; h = h%12; if(h===0) h=12;
+    return `${mm}/${dd} ${ap} ${h}:${mi}`;
+  }catch(e){ return ''; }
+}
+function openRecords(){
+  const h=getHistory();
+  const mask=document.createElement('div'); mask.className='mask';
+  const m=document.createElement('div'); m.className='modal';
+  m.innerHTML=`<h2>📜 기록</h2><div class="sub">지금까지 ${h.length}판 · 최고기록이 맨 위에 있어요 🏆</div>`;
+  if(h.length===0){
+    m.innerHTML += `<div class="defpop">아직 기록이 없어요. 한 판 해볼까? 🦊</div>`;
+  } else {
+    const best=getBest();
+    const bestTs=best.ts;
+    // 최신순 (최고기록은 따로 위에 고정)
+    const rest=h.slice().sort((a,b)=> (b.ts||0)-(a.ts||0));
+    const list=document.createElement('div'); list.id='pickerList';
+    // 최고기록 핀
+    const top=document.createElement('div'); top.className='pli';
+    top.style.background='var(--accent2)'; top.style.fontWeight='900';
+    top.innerHTML=`<span>🏆 최고기록</span><span>단어 <b>${best.count}</b>개 · ${best.score}점 <span style="font-size:12px;color:#7a5b00">${best.ts?fmtDate(best.ts):''}</span></span>`;
+    list.appendChild(top);
+    // 전체 기록 (최신순)
+    rest.forEach((r,i)=>{
+      const row=document.createElement('div'); row.className='pli';
+      const isBest = r.ts===bestTs && r.count===best.count && r.score===best.score;
+      row.innerHTML=`<span>${isBest?'⭐ ':''}${fmtDate(r.ts)}</span><span>단어 <b>${r.count}</b>개 · ${r.score}점</span>`;
+      list.appendChild(row);
+    });
+    m.appendChild(list);
+  }
+  const close=document.createElement('button'); close.className='closebtn'; close.textContent='닫기';
+  close.onclick=()=>document.body.removeChild(mask);
+  m.appendChild(close); mask.appendChild(m); document.body.appendChild(mask);
 }
 
 /* ===================== fx / toast ===================== */
@@ -660,10 +719,17 @@ $('btnStart').addEventListener('click', startGame);
 $('btnRestart').addEventListener('click', startGame);
 $('btnVoice').addEventListener('click', openVoicePicker);
 $('btnVoice2').addEventListener('click', openVoicePicker);
+$('btnRecords').addEventListener('click', openRecords);
+$('btnRecords2').addEventListener('click', openRecords);
 
 (async function boot(){
-  const b=bestRecord();
-  if(b.count>0) $('bestStart').textContent = `🏆 최고 기록: ${b.count}개 · ${b.score}점`;
+  // 예전 최고기록(kkutu_best)을 기록(history)으로 1회 이전
+  try{
+    const old=localStorage.getItem('kkutu_best');
+    if(old && getHistory().length===0){ const o=JSON.parse(old); if(o && (o.count||o.score)) addHistory(o.count||0, o.score||0); }
+  }catch(e){}
+  const b=getBest();
+  if(b.count>0 || b.score>0) $('bestStart').textContent = `🏆 최고 기록: ${b.count}개 · ${b.score}점`;
   try{
     await loadData();
     $('loadMsg').textContent = `준비 완료! 단어 ${ENTRY.size.toLocaleString()}개 🎈`;
